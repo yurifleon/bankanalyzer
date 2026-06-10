@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Repository: https://github.com/yurifleon/bankanalyzer
+
 ## Dependency
 
 Requires `openpyxl`. Install it with:
