@@ -34,7 +34,7 @@ NOISE_WORDS = {
 }
 
 # Pre-compiled patterns for clean_vendor_name
-_RE_SEPARATORS  = re.compile(r"[*#:/\\|,_\-]+")
+_RE_SEPARATORS  = re.compile(r"[*#:/\\|,_\-.]+")
 _RE_PHONE_SPACE = re.compile(r"\b\d{3}\s*\d{3}\s*\d{4}\b")
 _RE_PHONE_DASH  = re.compile(r"\b\d{3}[-.]\d{3}[-.]\d{4}\b")
 _RE_DATE_SLASH  = re.compile(r"\b\d{1,2}[/-]\d{1,2}([/-]\d{2,4})?\b")
@@ -89,6 +89,9 @@ def open_csv_with_fallback(input_csv):
         except UnicodeDecodeError:
             if csvfile:
                 csvfile.close()
+
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Input file not found: {input_csv}")
 
         except Exception:
             if csvfile:

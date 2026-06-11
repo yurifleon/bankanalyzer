@@ -9,9 +9,34 @@
 Python 3.7+ and the `openpyxl` library.
 
 ```bash
-pip install openpyxl
-# or on Debian/Ubuntu:
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+If you prefer a system package on Debian/Ubuntu:
+
+```bash
 sudo apt install python3-openpyxl
+```
+
+---
+
+## Testing
+
+A small test suite is included in the `tests/` folder.
+
+```bash
+source .venv/bin/activate
+python -m unittest discover -s tests
+```
+
+If you have not created the virtual environment yet, first run:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
 ---
@@ -310,7 +335,15 @@ The script tries four encodings automatically. If all fail with a `RuntimeError`
 
 **openpyxl not found**
 ```bash
-pip install openpyxl
+pip install -r requirements.txt
+```
+
+If your Python environment is system-managed, use a virtual environment instead:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
 ---
