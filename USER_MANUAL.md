@@ -1,12 +1,65 @@
 # Bank CSV Analyzer — User Manual
 
-`bank_csv_monthly_dual_profile_cardnum.py` reads a bank or credit-card CSV export and produces an Excel workbook with monthly spending summaries, vendor breakdowns, and an optional filtered workbook for a specific vendor or month.
+This repository provides two user-facing interfaces:
+
+- `bank_csv_monthly_dual_profile_cardnum.py` — the command-line analyzer.
+- `web_app.py` — a Flask-based browser interface for uploading CSVs and downloading generated workbooks.
+
+The app can also run in a container, with a default upload directory of `/uploads` and configurable runtime settings.
 
 ---
 
+## Architecture
+
+The project is built from three layers:
+
+### Core analyzer
+
+The script `bank_csv_monthly_dual_profile_cardnum.py` contains the core processing pipeline.
+
+- `open_csv_with_fallback()` opens the CSV file and tries several encodings until one succeeds.
+- `parse_date()` supports common date formats such as `MM/DD/YYYY`, `YYYY-MM-DD`, and `MM-DD-YY`.
+- `parse_amount()` cleans currency formatting, strips `$` and commas, and converts parenthesized values into negatives.
+- `clean_vendor_name()` normalizes raw descriptions using regex to remove separators, dates, phone numbers, alphanumeric IDs, and state abbreviations, then filters noise words.
+- `read_transactions()` loads rows into structured transaction dictionaries with date, vendor, debit, credit, net, and optional card number.
+- `summarize_by_month_vendor()`, `summarize_month_totals()`, and `top_10_per_month()` aggregate data for sheet generation.
+- `write_workbook()` produces an Excel workbook with three formatted sheets.
+
+### Web interface
+
+`web_app.py` exposes the analyzer as a browser app.
+
+- Receives uploaded CSV files and optional search/month filters.
+- Uses the same core analyzer functions as the CLI.
+- Saves all files under `UPLOAD_DIR`, which can be configured via environment variables.
+- Renders summary metrics, top vendor patterns, and workbook download links on the results page.
+- Supports profile selection and column overrides from the upload form.
+
+### Container support
+
+Container packaging provides a production-ready deployment path.
+
+- `Containerfile` builds the image from Python 3.11 slim.
+- `entrypoint.sh` creates the upload directory before starting the app.
+- The container runs `gunicorn` binding `0.0.0.0:5000`.
+- A healthcheck verifies the app responds on `http://127.0.0.1:5000/`.
+
+## Request flow
+
+When a browser request is processed:
+
+1. The user uploads a CSV and submits the form.
+2. Flask saves the file to `UPLOAD_DIR`.
+3. The app parses query parameters and resolves column mapping.
+4. `read_transactions()` loads the CSV and normalizes vendors.
+5. `write_workbook()` writes the Excel output file in the same upload directory.
+6. The results page shows summary data and download links.
+
 ## Requirements
 
-Python 3.7+ and the `openpyxl` library.
+Python 3.7+ and the `openpyxl`, `Flask`, and `gunicorn` libraries.
+
+Install dependencies:
 
 ```bash
 python3 -m venv .venv
@@ -14,7 +67,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-If you prefer a system package on Debian/Ubuntu:
+If you prefer a system-installed library on Debian/Ubuntu:
 
 ```bash
 sudo apt install python3-openpyxl
@@ -22,16 +75,42 @@ sudo apt install python3-openpyxl
 
 ---
 
+## Container usage
+
+Build the container image from the repository root:
+
+```bash
+podman build --format docker -t bankanalyzer:web -f Containerfile .
+```
+
+Run the container and expose port 5000:
+
+```bash
+podman run --rm -p 5000:5000 --name bankanalyzer bankanalyzer:web
+```
+
+To persist uploads and generated workbooks on the host, mount a host directory:
+
+```bash
+mkdir -p /srv/bankanalyzer/uploads
+podman run --rm -p 5000:5000 \
+  -e UPLOAD_DIR=/uploads \
+  -v /srv/bankanalyzer/uploads:/uploads:Z \
+  --name bankanalyzer bankanalyzer:web
+```
+
+---
+
 ## Testing
 
-A small test suite is included in the `tests/` folder.
+Run the included unit tests:
 
 ```bash
 source .venv/bin/activate
 python -m unittest discover -s tests
 ```
 
-If you have not created the virtual environment yet, first run:
+If the virtual environment is not yet created:
 
 ```bash
 python3 -m venv .venv
@@ -43,19 +122,17 @@ pip install -r requirements.txt
 
 ## Preparing your CSV
 
-Export your transaction history from your bank or card issuer as a CSV file. No manual editing is needed — the script handles headers, blank rows, and common encoding issues automatically (it tries utf-8-sig, utf-16, cp1252, and latin-1 in order).
+Export your transaction history as a CSV file. The analyzer supports headers, blank rows, and common encodings automatically (it tries `utf-8-sig`, `utf-16`, `cp1252`, and `latin-1`).
 
-The only requirement is that each data row contains a parseable date in one column and a dollar amount in another. See [Column mapping](#column-mapping) if your layout differs from the defaults.
+Each transaction row must include a parseable date and a numeric amount.
 
 ---
 
 ## CSV profiles
 
-The script has two built-in profiles that set default column positions.
+The analyzer supports two built-in layouts.
 
 ### Bank profile (default)
-
-Matches a typical checking/savings account export where debits and credits are in separate columns.
 
 | Column | Index | Content |
 |--------|-------|---------|
@@ -66,15 +143,13 @@ Matches a typical checking/savings account export where debits and credits are i
 
 ### Credit-card profile (`--profile credit-card`)
 
-Matches a typical credit-card export where a single amount column uses positive numbers for charges and negative numbers for payments.
-
 | Column | Index | Content |
 |--------|-------|---------|
 | A | 0 | Transaction date |
 | B | 1 | Description |
 | E | 4 | Amount (positive = charge, negative = payment) |
 
-Use `--profile credit-card` for Amex, Visa, Mastercard, and Discover card exports.
+Use `--profile credit-card` for card exports with sign-based amounts.
 
 ---
 
@@ -87,27 +162,25 @@ python3 bank_csv_monthly_dual_profile_cardnum.py transactions.csv
 python3 bank_csv_monthly_dual_profile_cardnum.py transactions.csv --profile credit-card
 ```
 
-This always runs first regardless of other options. It writes `transactions_monthly_totals.xlsx` (or whatever name you specify with `--monthly-output`) containing three sheets described in [Output sheets](#output-sheets).
+This generates a full-monthly workbook named `transactions_monthly_totals.xlsx` by default. Override the output filename with `--monthly-output`.
 
-### Generate a workbook filtered to one vendor
-
-Pass a search term as the second argument:
+### Generate a vendor-filtered workbook
 
 ```bash
 python3 bank_csv_monthly_dual_profile_cardnum.py transactions.csv "AMAZON" --profile credit-card
 python3 bank_csv_monthly_dual_profile_cardnum.py transactions.csv "PANERA"
 ```
 
-The search matches against both the raw description and the normalized vendor name, case-insensitively. A second Excel file is written alongside the full-year file containing only the matching rows.
+The search term matches both raw descriptions and normalized vendor names.
 
-### Filter to a specific month
+### Filter by month
 
 ```bash
 python3 bank_csv_monthly_dual_profile_cardnum.py transactions.csv --month 2025-03
 python3 bank_csv_monthly_dual_profile_cardnum.py transactions.csv "AMAZON" --month 2025-03
 ```
 
-`--month` accepts `YYYY-MM` format. When combined with a search term, both filters apply (rows must match the vendor AND fall in that month).
+`--month` accepts `YYYY-MM`.
 
 ---
 
@@ -115,149 +188,125 @@ python3 bank_csv_monthly_dual_profile_cardnum.py transactions.csv "AMAZON" --mon
 
 ### Vendor menu (`--menu`)
 
-Displays the top vendors ranked by transaction count and prompts you to pick one:
+Displays the top vendor patterns and prompts you to select one.
 
 ```bash
 python3 bank_csv_monthly_dual_profile_cardnum.py transactions.csv --profile credit-card --menu
 ```
 
-```
-Top 30 likely vendors/business patterns for whole year:
-
-1. PANERA BREAD (85 rows)
-   example: GglPay PANERA BREAD PENSACOLA  FL
-2. AMAZON MARKEPLACE (76 rows)
-   ...
-
-Select a number (1-30) or type custom search text:
-```
-
-Type a number to use the corresponding vendor, or type any text to use that as a free-form search.
-
-Use `--top N` to show more or fewer entries (default 30):
-
-```bash
-python3 bank_csv_monthly_dual_profile_cardnum.py transactions.csv --menu --top 50
-```
+Use `--top N` to change how many patterns are shown.
 
 ### Month selection menu (`--month-menu`)
 
-Prompts you to choose a specific month or the whole year:
+Choose a specific month or whole-year before filtering:
 
 ```bash
 python3 bank_csv_monthly_dual_profile_cardnum.py transactions.csv --month-menu
 ```
 
-```
-Available months:
-
-0. Whole year / all months
-1. 2025-01
-2. 2025-02
-...
-
-Select month number or press Enter for whole year:
-```
-
-`--menu` and `--month-menu` can be combined — the month selection runs first, then the vendor menu is shown filtered to that month.
+`--menu` and `--month-menu` can be combined.
 
 ---
 
 ## Output sheets
 
-Every workbook (both the full-year file and any filtered file) contains the same three sheets.
+Every workbook includes the same three sheets.
 
 ### Monthly Totals
 
-One row per calendar month. Columns:
-
-| Column | Description |
-|--------|-------------|
-| Month | YYYY-MM |
-| Transaction Count | Number of rows in that month |
-| Total Debit / Charges | Sum of all charges |
-| Total Credit / Payments | Sum of all payments/credits |
-| Net Credit - Debit | Payments minus charges (positive = net credit) |
-| First Date | Earliest transaction date in that month |
-| Last Date | Latest transaction date in that month |
+Reports each month with transaction count, total charges, payments, net value, and date range.
 
 ### Monthly Grouped
 
-One row per vendor per month (and per card number if `--card-col` is used). Columns:
-
-| Column | Description |
-|--------|-------------|
-| Month | YYYY-MM |
-| Vendor / Group | Normalized vendor name |
-| Card Number | Card/account identifier (only if `--card-col` was specified) |
-| Transaction Count | Number of transactions for this vendor in this month |
-| Total Debit / Charges | Sum of charges |
-| Total Credit / Payments | Sum of payments |
-| Net Credit - Debit | Net amount |
-| First Date | First transaction date |
-| Last Date | Last transaction date |
-| Examples | Up to 3 raw description strings from the source CSV |
-
-Sorted alphabetically by vendor within each month.
+Groups by `vendor` (and `card_number` if provided) with counts, totals, net, and example descriptions.
 
 ### Top 10 Per Month
 
-The 10 highest-spending vendors for each month, ranked by total charges. Columns are the same as Monthly Grouped plus a **Rank** column (1–10). Ties in total charges are broken by transaction count.
+Lists the top vendors per month by total charges with a rank column.
 
-All sheets have:
-- Bold blue header row
-- Frozen top row (header stays visible while scrolling)
-- Auto-filter dropdowns on every column
+All sheets include a frozen header row and auto-filters.
 
 ---
 
 ## Output file naming
 
-**Full-year workbook:** `INPUT_monthly_totals.xlsx` by default. Override with `--monthly-output`:
+Default full-year workbook:
 
 ```bash
-python3 bank_csv_monthly_dual_profile_cardnum.py transactions.csv --monthly-output my_report.xlsx
+python3 bank_csv_monthly_dual_profile_cardnum.py transactions.csv
 ```
 
-**Search/filtered workbook:** Auto-generated from the input filename, the word `search`, the month (if any), and the search term. Examples:
+Override with `--monthly-output`.
 
-```
-transactions_search_AMAZON.xlsx
-transactions_search_2025-03_PANERA BREAD.xlsx
-transactions_search_2025-03_option_1.xlsx   ← when selected from menu
-```
+Filtered workbooks are generated automatically from the input name, filter terms, and month. Override with `--search-output`.
 
-Override with `--search-output`:
-
-```bash
-python3 bank_csv_monthly_dual_profile_cardnum.py transactions.csv "AMAZON" --search-output amazon_2025.xlsx
-```
-
-**Subset CSV:** Optionally write the raw matching rows back to a CSV file with `--subset-csv`:
-
-```bash
-python3 bank_csv_monthly_dual_profile_cardnum.py transactions.csv "AMAZON" --subset-csv amazon_rows.csv
-```
+Use `--subset-csv` to export matching rows back to CSV.
 
 ---
 
 ## Column mapping
 
-If your CSV layout doesn't match either built-in profile, override individual columns with 0-based indices (column A = 0, B = 1, C = 2, …):
+Override column indices using 0-based numbering:
 
 ```bash
-# Date in column A, description in column C, debit in column D, credit in column E
 python3 bank_csv_monthly_dual_profile_cardnum.py transactions.csv \
     --date-col 0 --text-col 2 --debit-col 3 --credit-col 4
 ```
 
-Use `--credit-col -1` to indicate there is no separate credit column (sign-based single-amount layout like the credit-card profile):
+Use `--credit-col -1` for layouts without a separate credit column.
+
+---
+
+## Web UI usage
+
+Start the browser interface:
 
 ```bash
-python3 bank_csv_monthly_dual_profile_cardnum.py transactions.csv --debit-col 3 --credit-col -1
+python3 web_app.py
 ```
 
-Any override takes precedence over the profile default for that column. You can mix profile defaults with individual overrides.
+Open `http://127.0.0.1:5000` and upload your CSV. Use profile selection, search filters, and month filters from the browser.
+
+---
+
+## Container usage
+
+Build the container image:
+
+```bash
+podman build --format docker -t bankanalyzer:web -f Containerfile .
+```
+
+Run the container:
+
+```bash
+podman run --rm -p 5000:5000 --name bankanalyzer bankanalyzer:web
+```
+
+### Persistent upload directory
+
+To store uploads and outputs on the host:
+
+```bash
+mkdir -p /srv/bankanalyzer/uploads
+podman run --rm -p 5000:5000 \
+  -e UPLOAD_DIR=/uploads \
+  -v /srv/bankanalyzer/uploads:/uploads:Z \
+  --name bankanalyzer bankanalyzer:web
+```
+
+### Environment variables
+
+- `UPLOAD_DIR`: path inside the container for uploads and outputs.
+- `MAX_CONTENT_LENGTH`: upload size limit in bytes.
+- `FLASK_HOST`, `FLASK_PORT`: listening address and port.
+- `FLASK_DEBUG`: enable debug mode when set to `1` or `true`.
+
+---
+
+## Notes
+
+The system is designed for both CLI and browser usage, with container support for easier deployment.
 
 ---
 

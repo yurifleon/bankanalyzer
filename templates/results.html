@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Bank Analyzer Results</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/modern-normalize/modern-normalize.css">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; line-height: 1.6; }
+    header { margin-bottom: 1.5rem; }
+    h2 { margin-top: 2rem; }
+    .row { display: flex; flex-wrap: wrap; gap: 1rem; }
+    .card { flex: 1 1 240px; padding: 1rem; border: 1px solid #ddd; border-radius: 10px; background: #fff; }
+    .table-wrapper { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
+    th, td { border: 1px solid #ddd; padding: 0.6rem; text-align: left; }
+    th { background: #f4f7fb; }
+    a.button { display: inline-block; padding: 0.75rem 1.25rem; background: #1976d2; color: white; border-radius: 4px; text-decoration: none; }
+    a.button:hover { background: #135ba1; }
+    .badge { display: inline-block; background: #eef3ff; padding: 0.25rem 0.6rem; border-radius: 999px; margin-right: 0.4rem; font-size: 0.95rem; }
+    .meta p { margin: 0.3rem 0; }
+    .note { background: #f5f7ff; border-left: 4px solid #1976d2; padding: 1rem; margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Analysis Results</h1>
+    <p><a href="{{ url_for('index') }}">Upload another file</a></p>
+  </header>
+
+  <div class="note">
+    <p><strong>Profile:</strong> {{ profile }}</p>
+    <p><strong>Columns:</strong> date={{ date_col }}, description={{ text_col }}, debit/amount={{ debit_col }}, credit={{ credit_col }}, card={{ card_col }}</p>
+    {% if search_text %}<p><strong>Search text:</strong> {{ search_text }}</p>{% endif %}
+    {% if selected_month %}<p><strong>Selected month:</strong> {{ selected_month }}</p>{% endif %}
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <h2>Full analysis</h2>
+      <div class="meta">
+        <p>Rows: {{ full_summary.rows }}</p>
+        <p>Total debit: {{ full_summary.total_debit }}</p>
+        <p>Total credit: {{ full_summary.total_credit }}</p>
+        <p>Net credit minus debit: {{ full_summary.net }}</p>
+        <p>Transaction range: {{ full_summary.first_date }} to {{ full_summary.last_date }}</p>
+      </div>
+      <p><a class="button" href="{{ url_for('download_file', analysis_id=analysis_id, filename=monthly_output) }}">Download workbook</a></p>
+    </div>
+
+    {% if filtered_output %}
+      <div class="card">
+        <h2>Filtered analysis</h2>
+        <div class="meta">
+          <p>Rows: {{ filtered_summary.rows }}</p>
+          <p>Total debit: {{ filtered_summary.total_debit }}</p>
+          <p>Total credit: {{ filtered_summary.total_credit }}</p>
+          <p>Net credit minus debit: {{ filtered_summary.net }}</p>
+        </div>
+        <p><a class="button" href="{{ url_for('download_file', analysis_id=analysis_id, filename=filtered_output) }}">Download filtered workbook</a></p>
+      </div>
+    {% endif %}
+  </div>
+
+  <h2>Available months</h2>
+  <p>{{ available_months | join(', ') }}</p>
+
+  <h2>Top vendor patterns</h2>
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Vendor</th>
+          <th>Count</th>
+          <th>Example</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in pattern_summary %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ item.vendor }}</td>
+            <td>{{ item.count }}</td>
+            <td>{{ item.example }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Monthly totals</h2>
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Month</th>
+          <th>Transaction Count</th>
+          <th>Total Debit</th>
+          <th>Total Credit</th>
+          <th>Net</th>
+          <th>First Date</th>
+          <th>Last Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in monthly_totals %}
+          <tr>
+            <td>{{ row.month }}</td>
+            <td>{{ row.count }}</td>
+            <td>{{ row.total_debit }}</td>
+            <td>{{ row.total_credit }}</td>
+            <td>{{ row.total_credit - row.total_debit }}</td>
+            <td>{{ row.first_date }}</td>
+            <td>{{ row.last_date }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Top 10 vendors per month</h2>
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Month</th>
+          <th>Rank</th>
+          <th>Vendor</th>
+          <th>Count</th>
+          <th>Total Debit</th>
+          <th>Total Credit</th>
+          <th>Net</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in top_10_by_month %}
+          <tr>
+            <td>{{ row.month }}</td>
+            <td>{{ row.rank }}</td>
+            <td>{{ row.vendor }}</td>
+            <td>{{ row.count }}</td>
+            <td>{{ row.total_debit }}</td>
+            <td>{{ row.total_credit }}</td>
+            <td>{{ row.total_credit - row.total_debit }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>

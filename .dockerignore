@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.git/
+*.pytest_cache/
+tests/
+*.xlsx
+*.csv
+node_modules/
+env/

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Bank Analyzer Web Interface</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/modern-normalize/modern-normalize.css">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; line-height: 1.6; }
+    header { margin-bottom: 1.5rem; }
+    form { max-width: 760px; }
+    fieldset { margin-bottom: 1rem; padding: 1rem; border: 1px solid #ddd; }
+    legend { font-weight: bold; }
+    label { display: block; margin-bottom: 0.5rem; }
+    input[type=text], input[type=number], select { width: 100%; max-width: 100%; padding: 0.5rem; margin-top: 0.2rem; box-sizing: border-box; }
+    .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    button { padding: 0.75rem 1.25rem; border: none; background: #1976d2; color: white; font-size: 1rem; cursor: pointer; border-radius: 4px; }
+    button:hover { background: #135ba1; }
+    .note { background: #f5f7ff; border-left: 4px solid #1976d2; padding: 1rem; margin-bottom: 1rem; }
+    .error { background: #ffe1e1; border-left: 4px solid #d64545; padding: 1rem; margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Bank Analyzer</h1>
+    <p>Upload your transaction CSV and generate monthly analysis workbooks with optional search/month filtering.</p>
+  </header>
+
+  {% if error %}
+    <div class="error">{{ error }}</div>
+  {% endif %}
+
+  <div class="note">
+    <p>For credit-card exports, choose <strong>credit-card</strong> and leave <strong>credit column</strong> blank (the app will use a single amount column).</p>
+    <p>If you want a filtered workbook, enter search text or a month in <strong>YYYY-MM</strong> format.</p>
+  </div>
+
+  <form action="{{ url_for('analyze') }}" method="post" enctype="multipart/form-data">
+    <fieldset>
+      <legend>Input</legend>
+      <label>CSV file
+        <input type="file" name="input_csv" accept=".csv,text/csv" required>
+      </label>
+      <label>Profile
+        <select name="profile">
+          <option value="bank">Bank</option>
+          <option value="credit-card">Credit-card</option>
+        </select>
+      </label>
+      <label>Search text (optional)
+        <input type="text" name="search_text" placeholder="Amazon, Netflix, Uber...">
+      </label>
+      <label>Month (optional, YYYY-MM)
+        <input type="text" name="month" placeholder="2025-03">
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Column overrides (optional 0-based indices)</legend>
+      <div class="grid">
+        <label>Date column index
+          <input type="number" name="date_col" min="0" step="1" placeholder="Leave blank for profile default">
+        </label>
+        <label>Description column index
+          <input type="number" name="text_col" min="0" step="1" placeholder="Leave blank for profile default">
+        </label>
+        <label>Debit / Amount column index
+          <input type="number" name="debit_col" min="0" step="1" placeholder="Leave blank for profile default">
+        </label>
+        <label>Credit column index
+          <input type="number" name="credit_col" min="-1" step="1" placeholder="-1 for credit-card profile">
+        </label>
+        <label>Card / account column index
+          <input type="number" name="card_col" min="0" step="1" placeholder="Optional">
+        </label>
+      </div>
+    </fieldset>
+
+    <button type="submit">Analyze CSV</button>
+  </form>
+</body>
+</html>
