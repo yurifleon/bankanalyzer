@@ -7,3 +7,9 @@ __pycache__/
 *.xls
 *.log
 .DS_Store
+
+# Web UI runtime output (mount point created by run.sh)
+uploads/
+
+# Local statement data — do not commit personal financial CSVs
+activity-2026.csv
