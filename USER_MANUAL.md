@@ -83,6 +83,12 @@ Build the container image from the repository root:
 podman build --format docker -t bankanalyzer:web -f Containerfile .
 ```
 
+If you need to build the image on a RHEL9/UBI host or prefer a Red Hat UBI base image, pass a `BASE_IMAGE` build-arg. Example (replace the image name with your registry's UBI Python image):
+
+```bash
+podman build --format docker -t bankanalyzer:web --build-arg BASE_IMAGE=registry.redhat.io/ubi9/python-39:latest -f Containerfile .
+```
+
 Run the container and expose port 5000:
 
 ```bash

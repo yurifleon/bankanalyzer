@@ -1,4 +1,6 @@
-FROM python:3.11-slim
+# Allow selecting a base image for RHEL9 compatibility (pass `--build-arg BASE_IMAGE=...`).
+ARG BASE_IMAGE=python:3.11-slim
+FROM ${BASE_IMAGE}
 
 ENV PYTHONUNBUFFERED=1
 # Default uploads directory inside the container (can be overridden at runtime)
@@ -6,10 +8,14 @@ ENV UPLOAD_DIR=/uploads
 
 WORKDIR /app
 
-# Install runtime dependencies (minimal)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# NOTE: intentionally not installing OS packages here because some rootless
+# builders (crun/podman) can fail when package managers trigger systemd/dbus
+# calls. Choose a `BASE_IMAGE` that already includes `ca-certificates`, or
+# install OS packages manually in your build environment. Examples:
+#  - Use Debian/Ubuntu-based image: `python:3.11-slim` (often has CA certs)
+#  - Use Red Hat UBI Python image: pass `--build-arg BASE_IMAGE=registry.redhat.io/ubi9/python-39:latest`
+# If your target base lacks `ca-certificates`, install them in a separate
+# build step on a builder that permits package-manager operations.
 
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
@@ -29,10 +35,7 @@ RUN groupadd -g 1000 appuser || true \
 
 EXPOSE 5000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD python3 -c "import urllib.request, sys; import urllib.error; url='http://127.0.0.1:5000/';\
-try: resp = urllib.request.urlopen(url, timeout=5); sys.exit(0 if getattr(resp, 'status', 200) == 200 else 1)\
-except Exception: sys.exit(1)"
-
+# Note: HEALTHCHECK removed to improve rootless Podman/crun compatibility.
+# Rootful runs can still perform external health checks via the host or CI.
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["gunicorn", "web_app:app", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "--timeout", "120"]

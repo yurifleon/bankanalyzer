@@ -110,7 +110,12 @@ wait_for_server() {
 # Build the image if it's missing or a rebuild was requested.
 if [ "$REBUILD" -eq 1 ] || ! image_exists; then
   echo "Building image '$IMAGE' with $ENGINE..."
-  "$ENGINE" build -t "$IMAGE" -f Containerfile .
+  if [ -n "$BASE_IMAGE" ]; then
+    echo "Using BASE_IMAGE=$BASE_IMAGE"
+    "$ENGINE" build --build-arg "BASE_IMAGE=$BASE_IMAGE" -t "$IMAGE" -f Containerfile .
+  else
+    "$ENGINE" build -t "$IMAGE" -f Containerfile .
+  fi
 fi
 
 # Replace any existing container with the same name.
