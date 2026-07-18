@@ -67,11 +67,23 @@ Env vars: `UPLOAD_DIR` (analysis output root; default `<tmp>/bankanalyzer_web`),
 
 ## Container
 
-`Containerfile` (Podman/Docker) builds a `python:3.11-slim` image, runs as non-root `appuser`, and starts gunicorn. `entrypoint.sh` ensures `UPLOAD_DIR` exists and is owned by `appuser` before exec'ing the CMD. A `HEALTHCHECK` polls `/`.
+`Containerfile` (Podman/Docker) builds from a `BASE_IMAGE` build arg (default `python:3.11-slim`), runs as non-root `appuser`, and starts gunicorn. `entrypoint.sh` ensures `UPLOAD_DIR` exists and is owned by `appuser` before exec'ing the CMD. For rootless Podman/crun compatibility the image deliberately installs **no OS packages** and has **no `HEALTHCHECK`** — pick a `BASE_IMAGE` that already ships `ca-certificates` (e.g. a UBI9 Python image for RHEL9) and do health checks externally.
 
 ```bash
 podman build -t bankanalyzer -f Containerfile .
+# alternate base image:
+podman build --build-arg BASE_IMAGE=registry.redhat.io/ubi9/python-39:latest -t bankanalyzer -f Containerfile .
 podman run -p 5000:5000 -v ./uploads:/uploads bankanalyzer
+```
+
+`run.sh` wraps build-if-missing + run + open-browser in one step. It auto-detects podman vs docker and WSL vs native Linux, and honors `PORT`, `UPLOADS_DIR`, and `BASE_IMAGE` env vars:
+
+```bash
+./run.sh                 # build if missing, run, open Edge (default)
+./run.sh ff              # Firefox; 'cr' = Chrome, 'edge' = Edge
+./run.sh --rebuild       # force image rebuild
+./run.sh --no-browser    # container only
+PORT=8080 ./run.sh       # override host port (default 5000)
 ```
 
 ## Architecture
