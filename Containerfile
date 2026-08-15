@@ -15,8 +15,10 @@ WORKDIR /app
 #  - Use Debian/Ubuntu-based image: `python:3.11-slim` (often has CA certs)
 #  - Use Red Hat UBI Python image: pass `--build-arg BASE_IMAGE=registry.redhat.io/ubi9/python-39:latest`
 # If your target base lacks `ca-certificates`, install them in a separate
-# build step on a builder that permits package-manager operations.
-
+# build step on a builder that permits package-manager operations.#
+# The image intentionally has no HEALTHCHECK because Podman rootless/crun can
+# fail to create systemd healthcheck timers when no user systemd session is
+# available. External health checks should be managed by the runtime or CI.
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 

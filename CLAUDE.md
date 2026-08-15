@@ -67,7 +67,7 @@ Env vars: `UPLOAD_DIR` (analysis output root; default `<tmp>/bankanalyzer_web`),
 
 ## Container
 
-`Containerfile` (Podman/Docker) builds from a `BASE_IMAGE` build arg (default `python:3.11-slim`), runs as non-root `appuser`, and starts gunicorn. `entrypoint.sh` ensures `UPLOAD_DIR` exists and is owned by `appuser` before exec'ing the CMD. For rootless Podman/crun compatibility the image deliberately installs **no OS packages** and has **no `HEALTHCHECK`** — pick a `BASE_IMAGE` that already ships `ca-certificates` (e.g. a UBI9 Python image for RHEL9) and do health checks externally.
+`Containerfile` (Podman/Docker) builds from a `BASE_IMAGE` build arg (default `python:3.11-slim`), runs as non-root `appuser`, and starts gunicorn. `entrypoint.sh` ensures `UPLOAD_DIR` exists and is owned by `appuser` before exec'ing the CMD. For rootless Podman/crun compatibility the image deliberately installs **no OS packages** and has **no `HEALTHCHECK`** — rootless builds can fail when Podman tries to create systemd-based healthcheck timers without a user systemd session. Pick a `BASE_IMAGE` that already ships `ca-certificates` (e.g. a UBI9 Python image for RHEL9) and do health checks externally.
 
 ```bash
 podman build -t bankanalyzer -f Containerfile .
@@ -88,15 +88,16 @@ PORT=8080 ./run.sh       # override host port (default 5000)
 
 ## Architecture
 
-`bank_csv_monthly_dual_profile_cardnum.py` is a self-contained module usable both as a CLI (`main`) and as a library. `web_app.py` reuses its public functions (`read_transactions`, `filter_transactions`, `write_workbook`, `summarize_*`, `top_10_per_month`, `get_available_months`) — keep their signatures stable, since changing them breaks the web UI silently (no shared interface enforces it).
+`bank_csv_monthly_dual_profile_cardnum.py` is a self-contained module usable both as a CLI (`main`) and as a library. `web_app.py` reuses its public functions (`read_transactions`, `filter_transactions`, `write_workbook`, `summarize_*`, `top_10_per_month`, `detect_recurring_activity`, `get_available_months`) — keep their signatures stable, since changing them breaks the web UI silently (no shared interface enforces it).
 
 ### Data flow
 
 1. **`read_transactions`** — opens the CSV with multi-encoding fallback (`open_csv_with_fallback`: utf-8-sig → utf-16 → cp1252 → latin-1), parses dates and amounts, calls `clean_vendor_name` on each description, returns a list of transaction dicts.
 2. **`clean_vendor_name`** — normalizes raw bank descriptions into a short vendor label. All regex patterns and data sets are pre-compiled at module level (`_RE_*`, `_VENDOR_REPLACEMENTS`, `_KEEP_SHORT`, `_LOCATION_WORDS`). Pipeline: strip separators → apply string replacements → remove phone numbers / dates / alphanumeric IDs / state abbreviations → tokenize → filter noise words → keep first 1–4 meaningful tokens → strip trailing location words.
 3. **Summarization** — `summarize_month_totals`, `summarize_by_month_vendor`, `top_10_per_month` aggregate the transaction list. `write_workbook` calls `summarize_by_month_vendor` once and passes the result to both the *Monthly Grouped* sheet and `top_10_per_month` to avoid double computation.
-4. **`write_workbook`** — produces an `.xlsx` with three sheets: *Monthly Totals*, *Monthly Grouped*, *Top 10 Per Month*, with frozen header row and auto-filter.
-5. **`main`** — parses args, resolves column indices from profile defaults or overrides, runs the full pipeline, optionally generates a second filtered workbook and/or a subset CSV.
+4. **`detect_recurring_activity`** — groups transactions by `(vendor, card_number)`, requires at least `min_occurrences` (default 3) transactions, then computes the average/stdev of the day-gaps between transactions and of the transaction amounts. The average gap is matched against `_FREQUENCY_BANDS` (Weekly/Biweekly/Monthly/Quarterly/Annual); a group is only "recurring" if the gap's coefficient of variation is within `_RECURRING_INTERVAL_TOLERANCE` (0.35). Amounts within `_FIXED_AMOUNT_TOLERANCE` (0.15) coefficient of variation are labeled "Fixed Amount", otherwise "Variable Amount". Direction (`Income / Credit` vs `Expense / Charge`) comes from the sign of the summed `net` (credit − debit).
+5. **`write_workbook`** — produces an `.xlsx` with four sheets: *Monthly Totals*, *Monthly Grouped*, *Top 10 Per Month*, *Recurring Activity*, with frozen header row and auto-filter.
+6. **`main`** — parses args, resolves column indices from profile defaults or overrides, runs the full pipeline, optionally generates a second filtered workbook and/or a subset CSV. `--show-recurring` prints detected recurring vendors to the console.
 
 ### CSV column profiles
 

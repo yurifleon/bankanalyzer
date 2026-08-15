@@ -23,7 +23,8 @@ The script `bank_csv_monthly_dual_profile_cardnum.py` contains the core processi
 - `clean_vendor_name()` normalizes raw descriptions using regex to remove separators, dates, phone numbers, alphanumeric IDs, and state abbreviations, then filters noise words.
 - `read_transactions()` loads rows into structured transaction dictionaries with date, vendor, debit, credit, net, and optional card number.
 - `summarize_by_month_vendor()`, `summarize_month_totals()`, and `top_10_per_month()` aggregate data for sheet generation.
-- `write_workbook()` produces an Excel workbook with three formatted sheets.
+- `detect_recurring_activity()` groups transactions by vendor (and card number) and classifies each group as a recurring cadence (Weekly, Biweekly, Monthly, Quarterly, Annual — each Fixed or Variable amount) or Irregular.
+- `write_workbook()` produces an Excel workbook with four formatted sheets.
 
 ### Web interface
 
@@ -42,7 +43,7 @@ Container packaging provides a production-ready deployment path.
 - `Containerfile` builds the image from Python 3.11 slim.
 - `entrypoint.sh` creates the upload directory before starting the app.
 - The container runs `gunicorn` binding `0.0.0.0:5000`.
-- A healthcheck verifies the app responds on `http://127.0.0.1:5000/`.
+- The image intentionally does not define a built-in HEALTHCHECK because rootless Podman/crun can fail when creating systemd-based healthcheck timers without a user systemd session.
 
 ## Request flow
 
@@ -71,38 +72,6 @@ If you prefer a system-installed library on Debian/Ubuntu:
 
 ```bash
 sudo apt install python3-openpyxl
-```
-
----
-
-## Container usage
-
-Build the container image from the repository root:
-
-```bash
-podman build --format docker -t bankanalyzer:web -f Containerfile .
-```
-
-If you need to build the image on a RHEL9/UBI host or prefer a Red Hat UBI base image, pass a `BASE_IMAGE` build-arg. Example (replace the image name with your registry's UBI Python image):
-
-```bash
-podman build --format docker -t bankanalyzer:web --build-arg BASE_IMAGE=registry.redhat.io/ubi9/python-39:latest -f Containerfile .
-```
-
-Run the container and expose port 5000:
-
-```bash
-podman run --rm -p 5000:5000 --name bankanalyzer bankanalyzer:web
-```
-
-To persist uploads and generated workbooks on the host, mount a host directory:
-
-```bash
-mkdir -p /srv/bankanalyzer/uploads
-podman run --rm -p 5000:5000 \
-  -e UPLOAD_DIR=/uploads \
-  -v /srv/bankanalyzer/uploads:/uploads:Z \
-  --name bankanalyzer bankanalyzer:web
 ```
 
 ---
@@ -216,7 +185,7 @@ python3 bank_csv_monthly_dual_profile_cardnum.py transactions.csv --month-menu
 
 ## Output sheets
 
-Every workbook includes the same three sheets.
+Every workbook includes the same four sheets.
 
 ### Monthly Totals
 
@@ -229,6 +198,15 @@ Groups by `vendor` (and `card_number` if provided) with counts, totals, net, and
 ### Top 10 Per Month
 
 Lists the top vendors per month by total charges with a rank column.
+
+### Recurring Activity
+
+Groups by `vendor` (and `card_number` if provided), requiring at least 3 transactions, and classifies each group by cadence and amount consistency:
+
+- **Frequency**: Weekly, Biweekly, Monthly, Quarterly, or Annual, based on the average number of days between transactions.
+- **Amount pattern**: Fixed Amount (consistent amount each time) or Variable Amount.
+- **Direction**: Income / Credit or Expense / Charge, based on the net total.
+- Groups whose gaps or amounts are too inconsistent to fit a cadence are labeled **Irregular** and excluded from the console `--show-recurring` summary (but still listed in the sheet).
 
 All sheets include a frozen header row and auto-filters.
 
@@ -277,11 +255,21 @@ Open `http://127.0.0.1:5000` and upload your CSV. Use profile selection, search 
 
 ## Container usage
 
-Build the container image:
+Use one of these three patterns depending on your host and base image:
+
+1. Default image build (standard Docker/Podman hosts):
 
 ```bash
 podman build --format docker -t bankanalyzer:web -f Containerfile .
 ```
+
+2. RHEL9 / UBI build:
+
+```bash
+podman build --format docker -t bankanalyzer:web --build-arg BASE_IMAGE=registry.redhat.io/ubi9/python-39:latest -f Containerfile .
+```
+
+3. Rootless Podman compatibility: the image intentionally omits the in-image `HEALTHCHECK`, because rootless Podman/crun can fail when it tries to create systemd-based timers without a user systemd session. Use the default build command above and prefer an external health check or a rootful build when needed.
 
 Run the container:
 
@@ -354,6 +342,19 @@ To also print the top 10 vendors per month to the terminal (in addition to writi
 python3 bank_csv_monthly_dual_profile_cardnum.py transactions.csv --show-monthly-top10
 ```
 
+To print detected recurring vendors/activity to the terminal (in addition to writing the *Recurring Activity* sheet):
+
+```bash
+python3 bank_csv_monthly_dual_profile_cardnum.py transactions.csv --show-recurring
+```
+
+```
+Recurring activity:
+
+1. NETFLIX (Monthly Fixed Amount, Expense / Charge)
+   count=6, avg_amount=15.99, avg_interval_days=30.0, 2025-01-05 to 2025-06-04
+```
+
 ---
 
 ## Vendor normalization
@@ -415,6 +416,7 @@ pip install -r requirements.txt
 | `--month YYYY-MM` | *(none)* | Filter to a specific month |
 | `--top N` | 30 | Number of vendors shown in `--menu` |
 | `--show-monthly-top10` | off | Print top 10 vendors per month to console |
+| `--show-recurring` | off | Print detected recurring vendors/activity to console |
 | `--monthly-output FILE` | `INPUT_monthly_totals.xlsx` | Full-year workbook path |
 | `--search-output FILE` | *(auto-generated)* | Filtered workbook path |
 | `--subset-csv FILE` | *(none)* | Write matching raw rows to a CSV |

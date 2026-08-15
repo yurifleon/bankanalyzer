@@ -172,6 +172,9 @@ def analyze():
     top_10_by_month = analyzer.top_10_per_month(month_vendor_summary)
     available_months = analyzer.get_available_months(transactions)
     pattern_summary = compute_top_patterns(transactions, top_n=20, selected_month=selected_month)
+    recurring_activity = [
+        item for item in analyzer.detect_recurring_activity(transactions) if item["is_recurring"]
+    ]
     full_summary = compute_summary(transactions)
     filtered_summary = compute_summary(filtered_transactions) if filtered_transactions else None
 
@@ -192,6 +195,7 @@ def analyze():
         monthly_totals=monthly_totals,
         top_10_by_month=top_10_by_month,
         pattern_summary=pattern_summary,
+        recurring_activity=recurring_activity,
         full_summary=full_summary,
         filtered_summary=filtered_summary,
     )

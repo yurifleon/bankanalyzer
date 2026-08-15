@@ -11,7 +11,8 @@ The repository is organized into three layers.
    - **Parsing:** `parse_date()` and `parse_amount()` normalize dates and dollar values into Python objects.
    - **Vendor normalization:** `clean_vendor_name()` strips separators, phone numbers, dates, IDs, and state codes, then filters noise words.
    - **Transaction grouping:** `summarize_by_month_vendor()`, `summarize_month_totals()`, and `top_10_per_month()` aggregate transactions into the workbook rows.
-   - **Output:** `write_workbook()` produces an Excel file with three sheets using `openpyxl`.
+   - **Recurring activity:** `detect_recurring_activity()` groups transactions by vendor/card, then classifies each group as a recurring cadence (Weekly/Biweekly/Monthly/Quarterly/Annual, each Fixed or Variable amount) or Irregular, based on the consistency of the gaps between transactions and their amounts.
+   - **Output:** `write_workbook()` produces an Excel file with four sheets (Monthly Totals, Monthly Grouped, Top 10 Per Month, Recurring Activity) using `openpyxl`.
 
 2. **Web interface** (`web_app.py`)
    - Accepts CSV uploads, optional search terms, and month filters.

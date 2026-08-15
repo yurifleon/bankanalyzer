@@ -3,6 +3,7 @@
 import csv
 import argparse
 import re
+import statistics
 from collections import Counter, defaultdict
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
@@ -328,6 +329,26 @@ def show_top_10_by_month(transactions):
         print()
 
 
+def show_recurring_activity(transactions):
+    recurring = [item for item in detect_recurring_activity(transactions) if item["is_recurring"]]
+
+    print("\nRecurring activity:\n")
+
+    if not recurring:
+        print("No recurring activity detected.\n")
+        return
+
+    for idx, item in enumerate(recurring, start=1):
+        print(f"{idx}. {item['vendor']} ({item['classification']}, {item['direction']})")
+        print(
+            f"   count={item['count']}, avg_amount={item['avg_amount']}, "
+            f"avg_interval_days={item['avg_interval_days']}, "
+            f"{item['first_date']} to {item['last_date']}"
+        )
+
+    print()
+
+
 def summarize_by_month_vendor(transactions):
     grouped = {}
 
@@ -390,6 +411,109 @@ def summarize_month_totals(transactions):
         item["last_date"] = max(item["last_date"], tx["date"])
 
     return [grouped[key] for key in sorted(grouped)]
+
+
+# (label, min_avg_interval_days, max_avg_interval_days) used to classify how
+# often a recurring vendor/group is charged, based on the average number of
+# days between consecutive transactions.
+_FREQUENCY_BANDS = (
+    ("Weekly", 5, 9),
+    ("Biweekly", 12, 16),
+    ("Monthly", 26, 35),
+    ("Quarterly", 80, 100),
+    ("Annual", 350, 380),
+)
+
+# Maximum allowed coefficient of variation (stdev / mean) for the gaps
+# between transactions to still be considered a consistent recurring cadence.
+_RECURRING_INTERVAL_TOLERANCE = 0.35
+
+# Maximum allowed coefficient of variation for transaction amounts to be
+# labeled as a fixed amount rather than a variable one.
+_FIXED_AMOUNT_TOLERANCE = 0.15
+
+
+def _classify_frequency(avg_interval_days):
+    for label, low, high in _FREQUENCY_BANDS:
+        if low <= avg_interval_days <= high:
+            return label
+
+    return "Irregular"
+
+
+def detect_recurring_activity(transactions, min_occurrences=3):
+    """Group transactions by vendor (and card number), then classify each
+    group as a recurring pattern (Weekly/Biweekly/Monthly/Quarterly/Annual,
+    each Fixed or Variable amount) or Irregular, based on how consistent the
+    gaps between transactions and the transaction amounts are.
+    """
+    groups = defaultdict(list)
+
+    for tx in transactions:
+        if not tx["vendor"]:
+            continue
+
+        key = (tx["vendor"], tx.get("card_number", ""))
+        groups[key].append(tx)
+
+    results = []
+
+    for (vendor, card_number), txs in groups.items():
+        if len(txs) < min_occurrences:
+            continue
+
+        txs_sorted = sorted(txs, key=lambda t: t["date"])
+        dates = [t["date"] for t in txs_sorted]
+        intervals = [(dates[i] - dates[i - 1]).days for i in range(1, len(dates))]
+
+        if not intervals:
+            continue
+
+        avg_interval = statistics.mean(intervals)
+        interval_stdev = statistics.pstdev(intervals) if len(intervals) > 1 else 0.0
+        interval_consistency = (interval_stdev / avg_interval) if avg_interval else 1.0
+
+        amounts = [float(abs(t["net"])) for t in txs_sorted]
+        avg_amount = statistics.mean(amounts)
+        amount_stdev = statistics.pstdev(amounts) if len(amounts) > 1 else 0.0
+        amount_consistency = (amount_stdev / avg_amount) if avg_amount else 1.0
+
+        frequency = _classify_frequency(avg_interval)
+        is_recurring = frequency != "Irregular" and interval_consistency <= _RECURRING_INTERVAL_TOLERANCE
+
+        if not is_recurring:
+            frequency = "Irregular"
+
+        amount_pattern = "Fixed Amount" if amount_consistency <= _FIXED_AMOUNT_TOLERANCE else "Variable Amount"
+        classification = f"{frequency} {amount_pattern}" if is_recurring else "Irregular"
+
+        net_total = sum((t["net"] for t in txs_sorted), Decimal("0"))
+        direction = "Income / Credit" if net_total > 0 else "Expense / Charge"
+
+        examples = []
+        for t in txs_sorted:
+            if len(examples) >= 3:
+                break
+            if t["description"] not in examples:
+                examples.append(t["description"])
+
+        results.append({
+            "vendor": vendor,
+            "card_number": card_number,
+            "count": len(txs_sorted),
+            "direction": direction,
+            "avg_amount": Decimal(str(round(avg_amount, 2))),
+            "avg_interval_days": round(avg_interval, 1),
+            "frequency": frequency,
+            "is_recurring": is_recurring,
+            "classification": classification,
+            "first_date": dates[0],
+            "last_date": dates[-1],
+            "examples": examples,
+        })
+
+    results.sort(key=lambda x: (not x["is_recurring"], x["vendor"].lower()))
+    return results
 
 
 def top_10_per_month(month_vendor):
@@ -516,12 +640,40 @@ def add_top_10_sheet(wb, month_vendor):
     autosize_sheet(ws)
 
 
+def add_recurring_activity_sheet(wb, transactions):
+    ws = wb.create_sheet("Recurring Activity")
+
+    ws.append([
+        "Vendor / Group", "Card Number", "Classification", "Direction",
+        "Transaction Count", "Average Amount", "Average Interval (Days)",
+        "First Date", "Last Date", "Examples"
+    ])
+
+    for item in detect_recurring_activity(transactions):
+        ws.append([
+            item["vendor"],
+            item["card_number"],
+            item["classification"],
+            item["direction"],
+            item["count"],
+            float(item["avg_amount"]),
+            item["avg_interval_days"],
+            item["first_date"].isoformat(),
+            item["last_date"].isoformat(),
+            " | ".join(item["examples"]),
+        ])
+
+    style_header(ws)
+    autosize_sheet(ws)
+
+
 def write_workbook(transactions, output_xlsx):
     wb = Workbook()
     month_vendor = summarize_by_month_vendor(transactions)
     add_month_totals_sheet(wb, transactions)
     add_monthly_grouped_sheet(wb, month_vendor)
     add_top_10_sheet(wb, month_vendor)
+    add_recurring_activity_sheet(wb, transactions)
     wb.save(output_xlsx)
 
 
@@ -572,6 +724,7 @@ def main():
     parser.add_argument("--month", default=None, help="Search a specific month in YYYY-MM format, for example 2025-03")
     parser.add_argument("--top", type=int, default=30, help="Number of top vendor patterns to show, default 30")
     parser.add_argument("--show-monthly-top10", action="store_true", help="Print top 10 vendors per month")
+    parser.add_argument("--show-recurring", action="store_true", help="Print detected recurring vendors/activity to the console")
 
     parser.add_argument(
         "--profile",
@@ -659,6 +812,9 @@ def main():
 
     if args.show_monthly_top10:
         show_top_10_by_month(transactions)
+
+    if args.show_recurring:
+        show_recurring_activity(transactions)
 
     selected_month = args.month
 

@@ -147,5 +147,41 @@
       </tbody>
     </table>
   </div>
+
+  <h2>Recurring activity</h2>
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Vendor</th>
+          <th>Classification</th>
+          <th>Direction</th>
+          <th>Count</th>
+          <th>Average Amount</th>
+          <th>Average Interval (Days)</th>
+          <th>First Date</th>
+          <th>Last Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in recurring_activity %}
+          <tr>
+            <td>{{ row.vendor }}</td>
+            <td>{{ row.classification }}</td>
+            <td>{{ row.direction }}</td>
+            <td>{{ row.count }}</td>
+            <td>{{ row.avg_amount }}</td>
+            <td>{{ row.avg_interval_days }}</td>
+            <td>{{ row.first_date }}</td>
+            <td>{{ row.last_date }}</td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="8">No recurring activity detected.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </body>
 </html>
