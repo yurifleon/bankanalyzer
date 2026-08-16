@@ -34,6 +34,7 @@ The script `bank_csv_monthly_dual_profile_cardnum.py` contains the core processi
 - Uses the same core analyzer functions as the CLI.
 - Saves all files under `UPLOAD_DIR`, which can be configured via environment variables.
 - Renders summary metrics, top vendor patterns, and workbook download links on the results page.
+- Renders monthly trend and top-vendors-by-spend bar charts (Chart.js, loaded via CDN) alongside the summary tables.
 - Supports profile selection and column overrides from the upload form.
 
 ### Container support
@@ -250,6 +251,8 @@ python3 web_app.py
 ```
 
 Open `http://127.0.0.1:5000` and upload your CSV. Use profile selection, search filters, and month filters from the browser.
+
+The results page shows two charts alongside the summary tables: a monthly trend chart (total debit, credit, and net per month) and a top-10-vendors-by-spend chart. The top-vendors chart is scoped to the selected month when a month filter is applied, and to all months otherwise; if either dataset is empty, the page shows a "not enough data" note in place of that chart.
 
 ---
 

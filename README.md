@@ -20,12 +20,13 @@ The repository is organized into three layers.
    - Writes output workbooks to `UPLOAD_DIR` and exposes download links.
    - Supports overriding CSV column indices from the browser form.
    - Reads runtime configuration from environment variables.
+   - Renders monthly trend and top-vendors-by-spend bar charts (Chart.js via CDN) on the results page, alongside the existing summary tables.
 
 3. **Container packaging** (`Containerfile`, `entrypoint.sh`)
    - Builds a minimal Python 3.11 image and installs runtime dependencies.
    - Uses `entrypoint.sh` to create the `UPLOAD_DIR` at container startup.
    - Runs the web app with `gunicorn` on `0.0.0.0:5000`.
-   - Includes a `HEALTHCHECK` to verify the web endpoint is reachable.
+   - Intentionally has no in-image `HEALTHCHECK` — rootless Podman/crun can fail creating systemd-based healthcheck timers without a user systemd session; use an external health check instead.
 
 ## Detailed request flow
 
@@ -94,7 +95,7 @@ Start the browser-based app:
 python3 web_app.py
 ```
 
-Open `http://127.0.0.1:5000` and upload your CSV. The web UI supports profile selection, optional search text, and month filtering.
+Open `http://127.0.0.1:5000` and upload your CSV. The web UI supports profile selection, optional search text, and month filtering. The results page includes monthly trend and top-vendors-by-spend charts alongside the summary tables and workbook download links.
 
 ## Container usage
 
@@ -112,7 +113,7 @@ Run the container and expose port 5000:
 podman run --rm -p 5000:5000 --name bankanalyzer bankanalyzer:web
 ```
 
-The container runs `gunicorn` with the Flask app and includes a healthcheck.
+The container runs `gunicorn` with the Flask app. It has no built-in healthcheck (see the Containerfile note above) — use an external health check if you need one.
 
 ### Persistent uploads
 

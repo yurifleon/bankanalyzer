@@ -53,7 +53,7 @@ python3 bank_csv_monthly_dual_profile_cardnum.py input.csv --card-col 6
 
 ## Running the web UI
 
-`web_app.py` is a Flask front end that imports `bank_csv_monthly_dual_profile_cardnum` as a library (`analyzer`) — it does **not** shell out to the CLI. Upload a CSV, pick a profile / column overrides / search / month, and it renders summaries (`templates/results.html`) plus download links for the generated workbooks.
+`web_app.py` is a Flask front end that imports `bank_csv_monthly_dual_profile_cardnum` as a library (`analyzer`) — it does **not** shell out to the CLI. Upload a CSV, pick a profile / column overrides / search / month, and it renders summaries (`templates/results.html`) plus download links for the generated workbooks. The results page also renders two Chart.js bar charts (monthly debit/credit/net trend; top-10 vendors by spend, scoped to `selected_month` when set) — Chart.js loads via CDN (`cdn.jsdelivr.net`, pinned to `@4`, matching the existing `modern-normalize` CDN pattern), so there's no new Python dependency. `build_monthly_trend_data()` and `build_top_vendor_data()` in `web_app.py` reshape the existing summary data into JSON-serializable lists for these charts (`Decimal` → `float` happens only in these two functions).
 
 ```bash
 # Dev server (debug off by default)
