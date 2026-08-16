@@ -79,6 +79,32 @@ def compute_top_patterns(transactions, top_n=20, selected_month=None):
     return results
 
 
+def build_monthly_trend_data(monthly_totals):
+    return [
+        {
+            "month": row["month"],
+            "debit": float(row["total_debit"]),
+            "credit": float(row["total_credit"]),
+            "net": float(row["total_credit"] - row["total_debit"]),
+        }
+        for row in monthly_totals
+    ]
+
+
+def build_top_vendor_data(month_vendor_summary, selected_month=None, top_n=10):
+    totals = defaultdict(lambda: analyzer.Decimal("0"))
+
+    for row in month_vendor_summary:
+        if selected_month and row["month"] != selected_month:
+            continue
+        if not row["vendor"]:
+            continue
+        totals[row["vendor"]] += row["total_debit"]
+
+    ranked = sorted(totals.items(), key=lambda item: item[1], reverse=True)[:top_n]
+    return [{"vendor": vendor, "total_debit": float(total)} for vendor, total in ranked]
+
+
 def build_analysis_directory():
     analysis_id = uuid4().hex
     analysis_dir = UPLOAD_DIR / analysis_id
