@@ -13,3 +13,6 @@ uploads/
 
 # Local statement data — do not commit personal financial CSVs
 activity-2026.csv
+
+# Subagent-driven-development scratch (progress ledger, etc.)
+.superpowers/
