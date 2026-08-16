@@ -195,6 +195,8 @@ def analyze():
 
     monthly_totals = analyzer.summarize_month_totals(transactions)
     month_vendor_summary = analyzer.summarize_by_month_vendor(transactions)
+    monthly_trend = build_monthly_trend_data(monthly_totals)
+    top_vendors = build_top_vendor_data(month_vendor_summary, selected_month=selected_month)
     top_10_by_month = analyzer.top_10_per_month(month_vendor_summary)
     available_months = analyzer.get_available_months(transactions)
     pattern_summary = compute_top_patterns(transactions, top_n=20, selected_month=selected_month)
@@ -219,6 +221,8 @@ def analyze():
         selected_month=selected_month,
         available_months=available_months,
         monthly_totals=monthly_totals,
+        monthly_trend=monthly_trend,
+        top_vendors=top_vendors,
         top_10_by_month=top_10_by_month,
         pattern_summary=pattern_summary,
         recurring_activity=recurring_activity,
