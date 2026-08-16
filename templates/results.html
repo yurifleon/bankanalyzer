@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <title>Bank Analyzer Results</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/modern-normalize/modern-normalize.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body { font-family: Arial, sans-serif; margin: 2rem; line-height: 1.6; }
     header { margin-bottom: 1.5rem; }
@@ -89,6 +90,13 @@
   </div>
 
   <h2>Monthly totals</h2>
+  {% if monthly_trend %}
+    <div class="card">
+      <canvas id="monthlyTrendChart" height="100"></canvas>
+    </div>
+  {% else %}
+    <p>Not enough data to chart.</p>
+  {% endif %}
   <div class="table-wrapper">
     <table>
       <thead>
@@ -119,6 +127,13 @@
   </div>
 
   <h2>Top 10 vendors per month</h2>
+  {% if top_vendors %}
+    <div class="card">
+      <canvas id="topVendorsChart" height="100"></canvas>
+    </div>
+  {% else %}
+    <p>Not enough data to chart.</p>
+  {% endif %}
   <div class="table-wrapper">
     <table>
       <thead>
@@ -183,5 +198,38 @@
       </tbody>
     </table>
   </div>
+
+  <script>
+    const monthlyTrend = {{ monthly_trend | tojson }};
+    const topVendors = {{ top_vendors | tojson }};
+
+    if (monthlyTrend.length > 0) {
+      new Chart(document.getElementById('monthlyTrendChart'), {
+        type: 'bar',
+        data: {
+          labels: monthlyTrend.map(function (row) { return row.month; }),
+          datasets: [
+            { label: 'Total Debit', data: monthlyTrend.map(function (row) { return row.debit; }) },
+            { label: 'Total Credit', data: monthlyTrend.map(function (row) { return row.credit; }) },
+            { label: 'Net', data: monthlyTrend.map(function (row) { return row.net; }) },
+          ],
+        },
+        options: { responsive: true },
+      });
+    }
+
+    if (topVendors.length > 0) {
+      new Chart(document.getElementById('topVendorsChart'), {
+        type: 'bar',
+        data: {
+          labels: topVendors.map(function (row) { return row.vendor; }),
+          datasets: [
+            { label: 'Total Debit', data: topVendors.map(function (row) { return row.total_debit; }) },
+          ],
+        },
+        options: { responsive: true },
+      });
+    }
+  </script>
 </body>
 </html>
