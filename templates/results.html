@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <title>Bank Analyzer Results</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/modern-normalize/modern-normalize.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <style>
     body { font-family: Arial, sans-serif; margin: 2rem; line-height: 1.6; }
     header { margin-bottom: 1.5rem; }
@@ -129,10 +129,11 @@
   <h2>Top 10 vendors per month</h2>
   {% if top_vendors %}
     <div class="card">
+      <h3>Top vendors by spend{% if selected_month %} — {{ selected_month }}{% else %} — all months{% endif %}</h3>
       <canvas id="topVendorsChart" height="100"></canvas>
     </div>
   {% else %}
-    <p>Not enough data to chart.</p>
+    <p>No vendor spend to chart{% if selected_month %} for {{ selected_month }}{% endif %}.</p>
   {% endif %}
   <div class="table-wrapper">
     <table>
@@ -203,7 +204,7 @@
     const monthlyTrend = {{ monthly_trend | tojson }};
     const topVendors = {{ top_vendors | tojson }};
 
-    if (monthlyTrend.length > 0) {
+    if (typeof Chart !== 'undefined' && monthlyTrend.length > 0) {
       new Chart(document.getElementById('monthlyTrendChart'), {
         type: 'bar',
         data: {
@@ -218,7 +219,7 @@
       });
     }
 
-    if (topVendors.length > 0) {
+    if (typeof Chart !== 'undefined' && topVendors.length > 0) {
       new Chart(document.getElementById('topVendorsChart'), {
         type: 'bar',
         data: {
