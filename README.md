@@ -150,4 +150,4 @@ python -m unittest discover -s tests
 
 ## Additional documentation
 
-For a more detailed user guide, architecture description, and container usage examples, see `USER_MANUAL.md`.
+For a more detailed user guide and container usage examples, see `USER_MANUAL.md`. For module boundaries, data flow, and the design decisions/contracts behind them, see `ARCHITECTURE.md`.
