@@ -22,9 +22,10 @@ The script `bank_csv_monthly_dual_profile_cardnum.py` contains the core processi
 - `parse_amount()` cleans currency formatting, strips `$` and commas, and converts parenthesized values into negatives.
 - `clean_vendor_name()` normalizes raw descriptions using regex to remove separators, dates, phone numbers, alphanumeric IDs, and state abbreviations, then filters noise words.
 - `read_transactions()` loads rows into structured transaction dictionaries with date, vendor, debit, credit, net, and optional card number.
-- `summarize_by_month_vendor()`, `summarize_month_totals()`, and `top_10_per_month()` aggregate data for sheet generation.
+- `categorize_transaction()` labels each transaction with a spending category (see [Spending categories](#spending-categories)).
+- `summarize_by_month_vendor()`, `summarize_month_totals()`, `summarize_by_month_category()`, and `top_10_per_month()` aggregate data for sheet generation.
 - `detect_recurring_activity()` groups transactions by vendor (and card number) and classifies each group as a recurring cadence (Weekly, Biweekly, Monthly, Quarterly, Annual — each Fixed or Variable amount) or Irregular.
-- `write_workbook()` produces an Excel workbook with four formatted sheets.
+- `write_workbook()` produces an Excel workbook with five formatted sheets.
 
 ### Web interface
 
@@ -34,7 +35,7 @@ The script `bank_csv_monthly_dual_profile_cardnum.py` contains the core processi
 - Uses the same core analyzer functions as the CLI.
 - Saves all files under `UPLOAD_DIR`, which can be configured via environment variables.
 - Renders summary metrics, top vendor patterns, and workbook download links on the results page.
-- Renders monthly trend and top-vendors-by-spend bar charts (Chart.js, loaded via CDN) alongside the summary tables.
+- Renders monthly trend, top-vendors-by-spend, and spend-by-category bar charts (Chart.js, loaded via CDN) alongside the summary tables.
 - Supports profile selection and column overrides from the upload form.
 
 ### Container support
@@ -186,7 +187,7 @@ python3 bank_csv_monthly_dual_profile_cardnum.py transactions.csv --month-menu
 
 ## Output sheets
 
-Every workbook includes the same four sheets.
+Every workbook includes the same five sheets.
 
 ### Monthly Totals
 
@@ -199,6 +200,10 @@ Groups by `vendor` (and `card_number` if provided) with counts, totals, net, and
 ### Top 10 Per Month
 
 Lists the top vendors per month by total charges with a rank column.
+
+### Monthly by Category
+
+Reports each month broken down by spending category, with transaction count, total charges, total payments, and net. See [Spending categories](#spending-categories) for how the category is chosen.
 
 ### Recurring Activity
 
@@ -252,7 +257,9 @@ python3 web_app.py
 
 Open `http://127.0.0.1:5000` and upload your CSV. Use profile selection, search filters, and month filters from the browser.
 
-The results page shows two charts alongside the summary tables: a monthly trend chart (total debit, credit, and net per month) and a top-10-vendors-by-spend chart. The top-vendors chart is scoped to the selected month when a month filter is applied, and to all months otherwise; if either dataset is empty, the page shows a "not enough data" note in place of that chart.
+The results page shows three charts alongside the summary tables: a monthly trend chart (total debit, credit, and net per month), a top-10-vendors-by-spend chart, and a spend-by-category chart. The top-vendors and category charts are scoped to the selected month when a month filter is applied, and to all months otherwise; if a dataset is empty, the page shows a note in place of that chart.
+
+The category chart excludes Income and Transfers, so a payroll deposit or a credit-card payment cannot dwarf the real spending bars. Above it, the page reports what share of your spend is still uncategorized — use that number to judge how much to trust the breakdown.
 
 ---
 
@@ -372,6 +379,37 @@ Raw bank descriptions like `GglPay PANERA BREAD PENSACOLA FL` are normalized to 
 - Applies known normalizations: `AMAZON.COM` → `AMAZON`, `WM SUPERCENTER` → `WAL MART`, etc.
 
 The raw description is always preserved in the **Examples** column and in any subset CSV output.
+
+---
+
+## Spending categories
+
+After a vendor label is derived, each transaction is assigned one spending category. The categories are fixed:
+
+| Spending | Non-spending |
+|----------|--------------|
+| Groceries, Dining, Fuel & Transport, Utilities, Housing & Rent, Insurance, Healthcare, Shopping, Subscriptions, Travel, Fees & Interest | Income, Transfers |
+
+Anything the rules do not recognize is labeled **Uncategorized**.
+
+### How a category is chosen
+
+Keywords are matched as whole words against both the cleaned vendor label and the original description. The original description matters because vendor normalization deliberately strips words like `TRANSFER`, `PAYMENT`, `DEPOSIT` and `ACH` — which are exactly the words that identify a transfer or a paycheck.
+
+Rules are checked in a fixed order and the first match wins. The order resolves overlaps deliberately:
+
+- Transfers, Income and Fees & Interest are checked first, so a paycheck from an employer whose name resembles a store is still Income.
+- Subscriptions is checked before Utilities, so Apple's `APPLE.COM/BILINTERNET` charge is a subscription rather than an internet bill.
+- Travel is checked before Housing & Rent, so `ENTERPRISE RENT A CAR` is travel rather than rent.
+- Shopping is checked last, because its keywords are the broadest.
+
+A credit that matches no rule is treated as Income — unless it looks like a refund (`REFUND`, `RETURNED MERCHANDISE`), in which case it is not counted as earnings. Credit-card payments (`PAYMENT RECEIVED`, `THANK YOU`) are classified as Transfers, so paying your card off is never reported as income.
+
+### Reading the numbers
+
+Income and Transfers are excluded from spend-oriented views — the web results chart and any "total spent" reading — because a paycheck or a card payment would otherwise dwarf every real expense. They are still listed in the **Monthly by Category** sheet so nothing is hidden.
+
+Check the uncategorized percentage shown above the category chart. A large share means the rules did not recognize much of your spending, and the breakdown should be read with that in mind. Categories are keyword-driven, so regional and smaller merchants are the most likely to land in Uncategorized.
 
 ---
 

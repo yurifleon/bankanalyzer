@@ -16,7 +16,7 @@ pip install openpyxl   # or: sudo apt install python3-openpyxl
 
 ## Running tests
 
-`unittest`-based, no third-party test deps:
+`unittest`-based. `tests/test_bank_csv_monthly_dual_profile_cardnum.py` needs no third-party deps; `tests/test_web_app.py` imports Flask and skips itself automatically when Flask is absent, so the CLI-only install still runs the suite clean:
 
 ```bash
 python -m unittest discover -s tests

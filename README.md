@@ -10,9 +10,10 @@ The repository is organized into three layers.
    - **CSV reading:** `open_csv_with_fallback()` tries multiple encodings (`utf-8-sig`, `utf-16`, `cp1252`, `latin-1`).
    - **Parsing:** `parse_date()` and `parse_amount()` normalize dates and dollar values into Python objects.
    - **Vendor normalization:** `clean_vendor_name()` strips separators, phone numbers, dates, IDs, and state codes, then filters noise words.
-   - **Transaction grouping:** `summarize_by_month_vendor()`, `summarize_month_totals()`, and `top_10_per_month()` aggregate transactions into the workbook rows.
+   - **Categorization:** `categorize_transaction()` labels each transaction with one of 13 spending categories (Groceries, Dining, Fuel & Transport, Utilities, Housing & Rent, Insurance, Healthcare, Shopping, Subscriptions, Travel, Fees & Interest, Income, Transfers) or Uncategorized, using an ordered keyword table matched against both the cleaned vendor name and the raw description.
+   - **Transaction grouping:** `summarize_by_month_vendor()`, `summarize_month_totals()`, `summarize_by_month_category()`, and `top_10_per_month()` aggregate transactions into the workbook rows.
    - **Recurring activity:** `detect_recurring_activity()` groups transactions by vendor/card, then classifies each group as a recurring cadence (Weekly/Biweekly/Monthly/Quarterly/Annual, each Fixed or Variable amount) or Irregular, based on the consistency of the gaps between transactions and their amounts.
-   - **Output:** `write_workbook()` produces an Excel file with four sheets (Monthly Totals, Monthly Grouped, Top 10 Per Month, Recurring Activity) using `openpyxl`.
+   - **Output:** `write_workbook()` produces an Excel file with five sheets (Monthly Totals, Monthly Grouped, Top 10 Per Month, Monthly by Category, Recurring Activity) using `openpyxl`.
 
 2. **Web interface** (`web_app.py`)
    - Accepts CSV uploads, optional search terms, and month filters.
@@ -20,7 +21,7 @@ The repository is organized into three layers.
    - Writes output workbooks to `UPLOAD_DIR` and exposes download links.
    - Supports overriding CSV column indices from the browser form.
    - Reads runtime configuration from environment variables.
-   - Renders monthly trend and top-vendors-by-spend bar charts (Chart.js via CDN) on the results page, alongside the existing summary tables.
+   - Renders monthly trend, top-vendors-by-spend, and spend-by-category bar charts (Chart.js via CDN) on the results page, alongside the existing summary tables.
 
 3. **Container packaging** (`Containerfile`, `entrypoint.sh`)
    - Builds a minimal Python 3.11 image and installs runtime dependencies.
@@ -95,7 +96,7 @@ Start the browser-based app:
 python3 web_app.py
 ```
 
-Open `http://127.0.0.1:5000` and upload your CSV. The web UI supports profile selection, optional search text, and month filtering. The results page includes monthly trend and top-vendors-by-spend charts alongside the summary tables and workbook download links.
+Open `http://127.0.0.1:5000` and upload your CSV. The web UI supports profile selection, optional search text, and month filtering. The results page includes monthly trend, top-vendors-by-spend, and spend-by-category charts alongside the summary tables and workbook download links.
 
 ## Container usage
 
@@ -141,6 +142,8 @@ Run unit tests:
 ```bash
 python -m unittest discover -s tests
 ```
+
+Two modules: `tests/test_bank_csv_monthly_dual_profile_cardnum.py` covers the core analyzer and needs only `openpyxl`; `tests/test_web_app.py` covers the web app's chart data and skips itself when Flask is not installed, so the CLI-only install still runs the suite clean.
 
 ## Notes
 
