@@ -126,6 +126,40 @@
     </table>
   </div>
 
+  <h2>Spending by category</h2>
+  <p class="meta">
+    Income and transfers are excluded so they cannot dwarf real spending.
+    {% if categories %}
+      <strong>{{ uncategorized_pct }}%</strong> of spend is uncategorized.
+    {% endif %}
+  </p>
+  {% if categories %}
+    <div class="card">
+      <h3>Spend by category{% if selected_month %} &mdash; {{ selected_month }}{% else %} &mdash; all months{% endif %}</h3>
+      <canvas id="categorySpendChart" height="220"></canvas>
+    </div>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Total Debit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in categories %}
+            <tr>
+              <td>{{ row.category }}</td>
+              <td>{{ '%.2f'|format(row.total_debit) }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p>No categorized spend to chart{% if selected_month %} for {{ selected_month }}{% endif %}.</p>
+  {% endif %}
+
   <h2>Top 10 vendors per month</h2>
   {% if top_vendors %}
     <div class="card">
@@ -203,6 +237,7 @@
   <script>
     const monthlyTrend = {{ monthly_trend | tojson }};
     const topVendors = {{ top_vendors | tojson }};
+    const categorySpend = {{ categories | tojson }};
 
     if (typeof Chart !== 'undefined' && monthlyTrend.length > 0) {
       new Chart(document.getElementById('monthlyTrendChart'), {
@@ -229,6 +264,36 @@
           ],
         },
         options: { responsive: true },
+      });
+    }
+
+    if (typeof Chart !== 'undefined' && categorySpend.length > 0) {
+      // Horizontal: category names are long ("Fuel & Transport") and there can
+      // be a dozen of them. Single series, so bar length carries the meaning and
+      // one hue is enough -- no legend, no per-category colors.
+      new Chart(document.getElementById('categorySpendChart'), {
+        type: 'bar',
+        data: {
+          labels: categorySpend.map(function (row) { return row.category; }),
+          datasets: [
+            {
+              label: 'Total Debit',
+              data: categorySpend.map(function (row) { return row.total_debit; }),
+              backgroundColor: '#1976d2',
+              borderRadius: 4,
+              borderSkipped: 'start',
+            },
+          ],
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { beginAtZero: true, grid: { color: '#eee' } },
+            y: { grid: { display: false } },
+          },
+        },
       });
     }
   </script>

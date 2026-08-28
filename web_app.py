@@ -105,6 +105,41 @@ def build_top_vendor_data(month_vendor_summary, selected_month=None, top_n=10):
     return [{"vendor": vendor, "total_debit": float(total)} for vendor, total in ranked]
 
 
+def build_category_data(month_category_summary, selected_month=None):
+    """Spend-by-category for the results chart.
+
+    Income and Transfers are held out: a payroll deposit or a card payment
+    would otherwise dwarf every real spending bar. The uncategorized share is
+    returned alongside so the page can say how much of the spend the rules
+    actually explained.
+    """
+    totals = defaultdict(lambda: analyzer.Decimal("0"))
+
+    for row in month_category_summary:
+        if selected_month and row["month"] != selected_month:
+            continue
+        if row["category"] in analyzer.NON_SPEND_CATEGORIES:
+            continue
+        totals[row["category"]] += row["total_debit"]
+
+    ranked = sorted(
+        ((name, total) for name, total in totals.items() if total > 0),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+
+    total_spend = sum(total for _, total in ranked)
+    uncategorized = totals.get(analyzer.UNCATEGORIZED, analyzer.Decimal("0"))
+    uncategorized_pct = float(round(uncategorized / total_spend * 100, 1)) if total_spend else 0.0
+
+    return {
+        "categories": [
+            {"category": name, "total_debit": float(total)} for name, total in ranked
+        ],
+        "uncategorized_pct": uncategorized_pct,
+    }
+
+
 def build_analysis_directory():
     analysis_id = uuid4().hex
     analysis_dir = UPLOAD_DIR / analysis_id
@@ -197,6 +232,8 @@ def analyze():
     month_vendor_summary = analyzer.summarize_by_month_vendor(transactions)
     monthly_trend = build_monthly_trend_data(monthly_totals)
     top_vendors = build_top_vendor_data(month_vendor_summary, selected_month=selected_month)
+    month_category_summary = analyzer.summarize_by_month_category(transactions)
+    category_data = build_category_data(month_category_summary, selected_month=selected_month)
     top_10_by_month = analyzer.top_10_per_month(month_vendor_summary)
     available_months = analyzer.get_available_months(transactions)
     pattern_summary = compute_top_patterns(transactions, top_n=20, selected_month=selected_month)
@@ -223,6 +260,8 @@ def analyze():
         monthly_totals=monthly_totals,
         monthly_trend=monthly_trend,
         top_vendors=top_vendors,
+        categories=category_data["categories"],
+        uncategorized_pct=category_data["uncategorized_pct"],
         top_10_by_month=top_10_by_month,
         pattern_summary=pattern_summary,
         recurring_activity=recurring_activity,

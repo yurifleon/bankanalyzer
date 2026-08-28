@@ -162,6 +162,157 @@ def clean_vendor_name(description):
     return " ".join(vendor_tokens).strip()
 
 
+# --- Spending categories -----------------------------------------------------
+#
+# ORDER IS LOAD-BEARING. Rules are evaluated top to bottom and the first match
+# wins, so the table is arranged from most specific to most generic:
+#
+#   1. Structural rules (Transfers, Income, Fees & Interest) come first, so a
+#      payroll deposit from an employer whose name also appears in a merchant
+#      rule is still classified as Income rather than as a purchase.
+#   2. Subscriptions sits above Utilities because _VENDOR_REPLACEMENTS rewrites
+#      Amex's truncated "APPLE.COM/BILINTERNET" to "... INTERNET", which would
+#      otherwise be swallowed by the Utilities rule.
+#   3. Travel sits above Housing & Rent, whose bare "RENT" keyword would
+#      otherwise claim every "... RENT A CAR" descriptor.
+#   4. Shopping comes last; its keywords are the broadest.
+#
+# Keywords are matched as whole words/phrases against the cleaned vendor name
+# AND the raw description. Searching the raw description matters because
+# clean_vendor_name() drops TRANSFER, PAYMENT, DEPOSIT, ACH and friends as
+# NOISE_WORDS -- the very words that identify the structural categories.
+# Whole-word matching (rather than plain substring) keeps "COFFEE" out of the
+# "FEE" rule.
+UNCATEGORIZED = "Uncategorized"
+
+_RE_CATEGORY_SEPARATORS = re.compile(r"[^A-Z0-9]+")
+
+_CATEGORY_RULES = (
+    ("Transfers", (
+        "TRANSFER TO", "TRANSFER FROM", "ONLINE TRANSFER", "ACH TRANSFER",
+        "INTERNET TRANSFER", "ZELLE", "VENMO", "CASH APP", "PAYPAL TRANSFER",
+        "PAYMENT THANK YOU", "THANK YOU", "PAYMENT RECEIVED",
+        "CREDIT CARD PAYMENT", "AUTOPAY PAYMENT", "CREDIT CRD AUTOPAY",
+    )),
+    ("Income", (
+        "PAYROLL", "DIRECT DEP", "DIRECT DEPOSIT", "SALARY", "DIVIDEND",
+        "INTEREST PAID", "TAX REF", "TAX REFUND", "IRS TREAS", "SSA TREAS",
+        "PENSION", "REIMBURSEMENT",
+    )),
+    ("Fees & Interest", (
+        "SERVICE FEE", "SERVICE CHARGE", "ANNUAL FEE", "LATE FEE", "ATM FEE",
+        "NSF FEE", "MAINTENANCE FEE", "FOREIGN TRANSACTION FEE", "OVERDRAFT",
+        "INTEREST CHARGE", "FINANCE CHARGE",
+    )),
+    ("Groceries", (
+        "PUBLIX", "KROGER", "WAL MART", "ALDI", "WINN DIXIE", "WHOLE FOODS",
+        "WHOLEFDS", "TRADER JOE", "SAFEWAY", "COSTCO", "SAMS CLUB",
+        "FOOD LION", "SPROUTS", "MEIJER", "HARRIS TEETER", "WEGMANS",
+    )),
+    ("Dining", (
+        "MCDONALDS", "MCDONALD", "CHICK FIL A", "STARBUCKS", "DUNKIN", "SUBWAY",
+        "CHIPOTLE", "TACO BELL", "WENDYS", "BURGER KING", "PANERA", "KFC",
+        "POPEYES", "CHILIS", "OLIVE GARDEN", "SONIC", "ARBYS", "DOORDASH",
+        "UBER EATS", "GRUBHUB", "POSTMATES", "PIZZA", "RESTAURANT", "CAFE",
+        "COFFEE", "GRILL", "BREWING", "SUSHI", "BAKERY",
+    )),
+    ("Fuel & Transport", (
+        "SHELL", "CHEVRON", "EXXON", "MOBIL", "BP", "TEXACO", "CIRCLE K",
+        "RACETRAC", "WAWA", "SUNOCO", "MARATHON", "QT", "SPEEDWAY", "UBER",
+        "LYFT", "PARKING", "TOLL", "DMV", "AUTOZONE", "AUTO ZONE",
+        "JIFFY LUBE", "DISCOUNT TIRE", "TRANSIT",
+    )),
+    ("Subscriptions", (
+        "NETFLIX", "SPOTIFY", "HULU", "DISNEY PLUS", "DISNEYPLUS", "HBO MAX",
+        "PARAMOUNT", "PEACOCK", "YOUTUBE PREMIUM", "APPLE COM", "GOOGLE ONE",
+        "GOOGLE STORAGE", "GOOGLE PLAY", "MICROSOFT 365", "MSFT", "XBOX",
+        "ADOBE", "DROPBOX", "AUDIBLE", "PATREON", "OPENAI",
+        "ANTHROPIC", "GITHUB", "PLANET FITNESS", "LA FITNESS", "GYM",
+    )),
+    ("Utilities", (
+        "GULF POWER", "FLORIDA POWER", "FPL", "DUKE ENERGY", "ELECTRIC",
+        "WATER", "SEWER", "GAS COMPANY", "COMCAST", "XFINITY", "SPECTRUM",
+        "COX COMMUNICATIONS", "AT T", "VERIZON", "T MOBILE", "TMOBILE",
+        "CENTURYLINK", "INTERNET", "UTILITIES", "WASTE MANAGEMENT",
+    )),
+    ("Travel", (
+        "AIRLINES", "DELTA AIR", "AMERICAN AIR", "SOUTHWEST", "UNITED AIR",
+        "HOTEL", "MARRIOTT", "HILTON", "HYATT", "AIRBNB", "VRBO", "EXPEDIA",
+        "BOOKING COM", "PRICELINE", "RENTAL CAR", "RENT A CAR", "HERTZ",
+        "ENTERPRISE RENT", "AVIS", "CRUISE",
+    )),
+    ("Housing & Rent", (
+        "RENT", "MORTGAGE", "PROPERTY MGMT", "APARTMENTS", "HOA", "LEASING",
+        "REALTY", "HOME DEPOT", "LOWES", "ACE HARDWARE",
+    )),
+    ("Insurance", (
+        "INSURANCE", "STATE FARM", "GEICO", "PROGRESSIVE", "ALLSTATE", "USAA",
+        "NATIONWIDE", "LIBERTY MUTUAL", "AFLAC",
+    )),
+    ("Healthcare", (
+        "PHARMACY", "CVS", "WALGREENS", "RITE AID", "MEDICAL", "DENTAL",
+        "DENTIST", "CLINIC", "HOSPITAL", "HEALTH", "OPTOMETRY", "VISION",
+        "LABCORP", "QUEST DIAGNOSTICS", "URGENT CARE",
+    )),
+    ("Shopping", (
+        "AMAZON", "AMZN", "TARGET", "BEST BUY", "EBAY", "ETSY", "TEMU", "SHEIN",
+        "WAYFAIR", "IKEA", "MACYS", "KOHLS", "ROSS", "TJ MAXX", "MARSHALLS",
+        "OLD NAVY", "NIKE", "DICKS SPORTING", "MICHAELS", "HOBBY LOBBY",
+        "DOLLAR GENERAL", "DOLLAR TREE", "FIVE BELOW", "PETCO", "PETSMART",
+    )),
+)
+
+# Categories that are not spending: they are excluded from spend-oriented
+# views so a payroll deposit or a card payment cannot dwarf the real charges.
+NON_SPEND_CATEGORIES = ("Income", "Transfers")
+
+# Credits that are money coming back from a purchase rather than money earned.
+# Checked before the net>0 Income fallback so refunds are not counted as income.
+_REFUND_KEYWORDS = (
+    "REFUND", "RETURNED MERCHANDISE", "RETURN CREDIT", "CREDIT VOUCHER",
+    "MERCHANDISE CREDIT", "PURCHASE RETURN",
+)
+
+
+# Keywords padded with spaces once, at import, so the per-row hot path does no
+# string formatting. _CATEGORY_RULES above stays the readable source of truth;
+# this is the form categorize_transaction actually scans. Same reasoning as the
+# pre-compiled _RE_* patterns used by clean_vendor_name.
+_CATEGORY_RULES_PADDED = tuple(
+    (category, tuple(" %s " % keyword for keyword in keywords))
+    for category, keywords in _CATEGORY_RULES
+)
+
+_REFUND_KEYWORDS_PADDED = tuple(" %s " % keyword for keyword in _REFUND_KEYWORDS)
+
+
+def _category_haystack(vendor, description):
+    text = "%s %s" % (vendor or "", description or "")
+    text = _RE_CATEGORY_SEPARATORS.sub(" ", text.upper())
+    return " %s " % " ".join(text.split())
+
+
+def categorize_transaction(vendor, description, net):
+    haystack = _category_haystack(vendor, description)
+
+    for category, keywords in _CATEGORY_RULES_PADDED:
+        for keyword in keywords:
+            if keyword in haystack:
+                return category
+
+    # Nothing matched. An unexplained credit is far more likely to be income
+    # than an unexplained charge is to be any particular thing -- but only if it
+    # does not look like money coming back from a purchase.
+    if net is not None and net > 0:
+        for keyword in _REFUND_KEYWORDS_PADDED:
+            if keyword in haystack:
+                return UNCATEGORIZED
+
+        return "Income"
+
+    return UNCATEGORIZED
+
+
 def safe_filename(value):
     safe = "".join(c if c.isalnum() else "_" for c in str(value))
     safe = re.sub(r"_+", "_", safe).strip("_")
@@ -217,16 +368,19 @@ def read_transactions(input_csv, date_col, text_col, debit_col, credit_col, card
                 except Exception:
                     card_number = ""
 
+            net = credit - debit
+
             transactions.append({
                 "row_number": row_number,
                 "date": tx_date,
                 "month": month_key(tx_date),
                 "description": description,
                 "vendor": vendor,
+                "category": categorize_transaction(vendor, description, net),
                 "card_number": card_number,
                 "debit": debit,
                 "credit": credit,
-                "net": credit - debit,
+                "net": net,
                 "row": row,
             })
 
@@ -384,6 +538,35 @@ def summarize_by_month_vendor(transactions):
             x["month"],
             x["vendor"].lower()
         )
+    )
+
+
+def summarize_by_month_category(transactions):
+    grouped = {}
+
+    for tx in transactions:
+        # .get() so that transaction dicts assembled by hand -- as the tests
+        # and any external caller may do -- still summarize cleanly.
+        category = tx.get("category") or UNCATEGORIZED
+        key = (tx["month"], category)
+
+        if key not in grouped:
+            grouped[key] = {
+                "month": tx["month"],
+                "category": category,
+                "count": 0,
+                "total_debit": Decimal("0"),
+                "total_credit": Decimal("0"),
+            }
+
+        item = grouped[key]
+        item["count"] += 1
+        item["total_debit"] += tx["debit"]
+        item["total_credit"] += tx["credit"]
+
+    return sorted(
+        grouped.values(),
+        key=lambda x: (x["month"], x["category"])
     )
 
 
@@ -640,6 +823,28 @@ def add_top_10_sheet(wb, month_vendor):
     autosize_sheet(ws)
 
 
+def add_category_sheet(wb, month_category):
+    ws = wb.create_sheet("Monthly by Category")
+
+    ws.append([
+        "Month", "Category", "Transaction Count",
+        "Total Debit / Charges", "Total Credit / Payments", "Net Credit - Debit"
+    ])
+
+    for item in month_category:
+        ws.append([
+            item["month"],
+            item["category"],
+            item["count"],
+            float(item["total_debit"]),
+            float(item["total_credit"]),
+            float(item["total_credit"] - item["total_debit"]),
+        ])
+
+    style_header(ws)
+    autosize_sheet(ws)
+
+
 def add_recurring_activity_sheet(wb, transactions):
     ws = wb.create_sheet("Recurring Activity")
 
@@ -673,6 +878,7 @@ def write_workbook(transactions, output_xlsx):
     add_month_totals_sheet(wb, transactions)
     add_monthly_grouped_sheet(wb, month_vendor)
     add_top_10_sheet(wb, month_vendor)
+    add_category_sheet(wb, summarize_by_month_category(transactions))
     add_recurring_activity_sheet(wb, transactions)
     wb.save(output_xlsx)
 
